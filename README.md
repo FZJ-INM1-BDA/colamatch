@@ -1,4 +1,4 @@
-# demics
+# colamatch
 
 ## Installation
 
