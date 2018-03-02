@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import logging
-import math
 import cv2
 
 class Matcher(ABC):
@@ -43,21 +42,22 @@ class TemplateMatcher(Matcher):
 
     def match(self, l_fixed, l_moving, img_fixed, img_moving, candidates=None, num_best_matches=1):
         """ Perform template matching. """
+        if candidates is None:  # every match is possible
+            candidates = np.array(np.where(np.ones((len(l_fixed),len(l_moving))))).T
         scores = []
-        #FIXME what if candidates is None?
         for candidate in candidates:
             scores.append(self._template_matching(l_fixed[candidate[0]], l_moving[candidate[1]], img_fixed, img_moving))
         scores = np.array(scores)
+        # for squared differences, small scores are best -> sorted scores must be reversed later
+        sort_scores = -1 if self.cv2_matching_method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED] else 1
         template_matches = []
         for fixed_idx in np.unique(candidates[:,0]):
-            #FIXME for some cv2 matching methods it must be argmin instead of argmax ([:num_best_matches] instead of [-num_best_matches:])
             relevant_candidates = np.where(candidates[:,0] == fixed_idx)
-            match_indices = np.argsort(scores[relevant_candidates], axis=None)[-num_best_matches:]
+            match_indices = np.argsort(scores[relevant_candidates], axis=None)[::sort_scores][-num_best_matches:]
             template_matches.extend(np.vstack(([fixed_idx]*len(match_indices), candidates[relevant_candidates][match_indices][:,1])).T)
         for moving_idx in np.unique(candidates[:,1]):
-            #FIXME for some cv2 matching methods it must be argmin instead of argmax ([:num_best_matches] instead of [-num_best_matches:])
             relevant_candidates = np.where(candidates[:,1] == moving_idx)
-            match_indices = np.argsort(scores[relevant_candidates], axis=None)[-num_best_matches:]
+            match_indices = np.argsort(scores[relevant_candidates], axis=None)[::sort_scores][-num_best_matches:]
             template_matches.extend(np.vstack((candidates[relevant_candidates][match_indices][:,0], [moving_idx]*len(match_indices))).T)
         return np.unique(template_matches, axis=0)
 
