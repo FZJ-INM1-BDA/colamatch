@@ -1,3 +1,4 @@
+import numpy as np
 from sklearn.neighbors import KDTree
 
 def _sample_landmarks(landmarks, sample_size=4):
@@ -10,7 +11,11 @@ def _sample_landmarks(landmarks, sample_size=4):
     """
     if sample_size != 4:
         raise NotImplementedError("Until now, only sample_size=4 is implemented.")
-    pass
+    #TODO add intelligent sampling
+    import random
+    indices = range(len(landmarks))
+    indices = random.sample(indices, sample_size)
+    return landmarks[indices]
 
 def _create_hash(pointlist, lamda=1):
     """ Create geometric hash of given pointlist.
@@ -26,7 +31,8 @@ def _create_hash(pointlist, lamda=1):
         tuple: Hash of quad built from given pointlist.
         list: Sorted pointlist.
     """
-    pass
+    flat_list = [item for sublist in pointlist for item in sublist]
+    return tuple(flat_list), pointlist
 
 def build_index(landmarks, num_samples, sample_size=4, lamda=1):
     """ Build an index of point samples with their geometric hash code as key.
@@ -61,9 +67,11 @@ def find_similar_hashes(index_fixed, index_moving, radius):
     matches = []
     for hashcode, moving_coords in index_moving.items():
         #NOTE Vorsicht, hashcode is tuple!
-        neighbor_hashes = kdtree.query_radius([hashcode], radius)
-        neighbor_coords = [index_fixed[nh] for nh in neighbor_hashes]
-        matches.extend([[ni,si] for (ni,si) in zip(neighbor_coords, [moving_coords]*len(neighbor_coords))])
+        neighbor_indices = kdtree.query_radius([hashcode], radius)[0]
+        if len(neighbor_indices) > 0:
+            neighbor_hashes = np.array(list(index_fixed.keys()))[neighbor_indices]
+            neighbor_coords = [index_fixed[tuple(nh)] for nh in neighbor_hashes]
+            matches.extend([[ni,si] for (ni,si) in zip(neighbor_coords, [moving_coords]*len(neighbor_coords))])
     return matches
 
 def match(landmarks_fixed, landmarks_moving, num_samples, radius, sample_size=4, lamda=1):
@@ -71,4 +79,5 @@ def match(landmarks_fixed, landmarks_moving, num_samples, radius, sample_size=4,
     index_fixed = build_index(landmarks_fixed, num_samples, sample_size, lamda)
     index_moving = build_index(landmarks_moving, num_samples, sample_size, lamda)
     matches = find_similar_hashes(index_fixed, index_moving, radius=radius)
+    print(matches)
     return matches
