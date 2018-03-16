@@ -92,7 +92,7 @@ class TemplateMatcher(Matcher):
 class TriangleMatcher(Matcher):
     """ TriangleMatcher class. """
 
-    def match(self, l_fixed, l_moving, candidates=None):
+    def match(self, L_fixed, L_moving, candidates=None):
         """ Perform triangle matching. """
         matched_indices = self._get_triangle_matches(candidates)
         matched_indices = self._triangle_ransac(matched_indices)
@@ -123,3 +123,55 @@ class TriangleMatcher(Matcher):
             sumABC += (ABC_Coords[i][1] + ABC_Coords[i-1][1]) * (ABC_Coords[i][0] - ABC_Coords[i-1][0])
             sumDEF += (DEF_Coords[i][1] + DEF_Coords[i-1][1]) * (DEF_Coords[i][0] - DEF_Coords[i-1][0])
         return np.sign(sumABC) != np.sign(sumDEF)
+
+class StarMatcher(Matcher):
+    """ StarMatcher class.
+    Possible Args: num_neighbors (k), dist_tolerance, angle_tolerance
+    """
+
+    def __init__(self, max_matching_distance, num_neighbors, rtol_distance=0.05, atol_distance=5, rtol_angle=0.05, atol_angle=0):
+        """ Initialize. """
+        super(StarMatcher, self).__init__(max_matching_distance)
+        self.num_neighbors = num_neighbors
+        self.rtol = {"distance": rtol_distance, "angle": rtol_angle}
+        self.atol = {"distance": atol_distance, "angle": atol_angle}
+
+    def match(self, L_fixed, L_moving, candidates=None):
+        """ Match given landmarks. """
+        from sklearn.neighbors import KDTree
+        if candidates is None:  # every match is possible
+            candidates = np.array(np.where(np.ones((len(L_fixed),len(L_moving))))).T
+        # save landmarks and KDTrees of landmarks
+        self.L_fixed = L_fixed
+        self.L_moving = L_moving
+        self.KDTree_fixed = KDTree(L_fixed, leaf_size=2, metric='minkowski')
+        self.KDTree_moving = KDTree(L_moving, leaf_size=2, metric='minkowski')
+        matches = []
+        for fixed_idx in np.unique(candidates[:,0]):
+            for moving_idx in candidates[np.where(candidates[:,0] == fixed_idx)][:,1]:
+                similar = self._compare_neighborhood(fixed_idx, moving_idx)
+                if similar:
+                    matches.append([fixed_idx, moving_idx])
+        return matches
+
+    def _compare_neighborhood(self, fixed_idx, moving_idx):
+        """ Alternative: query radius instead of k=5. """
+        fixed_dists, fixed_neighbors = self.KDTree_fixed.query([self.L_fixed[fixed_idx]], k=self.num_neighbors, return_distance=True, sort_results=True)
+        moving_dists, moving_neighbors = self.KDTree_moving.query([self.L_moving[moving_idx]], k=self.num_neighbors, return_distance=True, sort_results=True)
+        print(fixed_dists[0][1:], moving_dists[0][1:])
+        sim_dists = [[f,m]
+                     for f,fd in enumerate(fixed_dists[0][1:])
+                     for m,md in enumerate(moving_dists[0][1:])
+                     if self._is_close(fd, md, "distance")]
+        #TODO pick all pairs out of sim_dists, calculate and compare angle, return true if at least one angle is similar
+        if len(sim_dists) > 1:
+            return True
+        else:
+            return False
+
+    def _is_close(self, a, b, type="distance"):
+        """ Return True if a and b are similar with respect to given tolerances. """
+        return abs(a-b) <= self.rtol[type]*((a+b)//2) + self.atol[type]
+
+    def _sliding_window_ransac(self):
+        pass
