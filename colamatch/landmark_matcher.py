@@ -1,50 +1,30 @@
-from abc import ABC, abstractmethod
 import numpy as np
 import logging
 import cv2
 
-class Matcher(ABC):
-    """ Abstract Matcher class. """
+def get_candidates(L_fixed, L_moving, max_matching_distance):
+    """ Get landmarks with distance < max_matching_distance.
 
-    def __init__(self, max_matching_distance):
-        """ Initialize. """
-        self.max_matching_distance = max_matching_distance
-        self.logger = logging.getLogger(__package__)
+    Args:
+        L_fixed (array-like): Landmarks in fixed image (x,y coordinates).
+        L_moving (array-like): Landmarks in moving image (x,y coordinates).
+    Returns:
+        Array with index pairs of L_fixed and L_moving defining match candidates (shape (N,2)).
+    """
+    possibleMatches = np.zeros((0,3))
+    for i,k0 in enumerate(L_fixed):
+        for j,k1 in enumerate(L_moving):
+            value = 1-(np.sqrt(((np.array(k0[:2])-np.array(k1[:2]))**2).sum()) / float(max_matching_distance))
+            if value >= 0:
+                possibleMatches = np.append(possibleMatches, [[i,j,value]], axis=0)
 
-    @abstractmethod
-    def match(self):
-        """ Abstract matching method. """
-        pass
-
-    def get_candidates(self, L_fixed, L_moving):
-        """ Get landmarks with distance < max_matching_distance.
-
-        Args:
-            L_fixed (array-like): Landmarks in fixed image (x,y coordinates).
-            L_moving (array-like): Landmarks in moving image (x,y coordinates).
-        Returns:
-            Array with index pairs of L_fixed and L_moving defining match candidates (shape (N,2)).
-        """
-        possibleMatches = np.zeros((0,3))
-        for i,k0 in enumerate(L_fixed):
-            for j,k1 in enumerate(L_moving):
-                value = 1-(np.sqrt(((np.array(k0[:2])-np.array(k1[:2]))**2).sum()) / float(self.max_matching_distance))
-                if value >= 0:
-                    possibleMatches = np.append(possibleMatches, [[i,j,value]], axis=0)
-        return possibleMatches
-
-    #TODO needed???
-    def homography_ransac(self, l_fixed, l_moving, candidates):
-        """ Perform homography ransac. """
-        pass
-
-
-class TemplateMatcher(Matcher):
+class TemplateMatcher:
     """ TemplateMatcher class. """
 
     def __init__(self, max_matching_distance, patchsize, cv2_matching_method=cv2.TM_CCOEFF_NORMED):
         """ Initialize. """
-        super(TemplateMatcher, self).__init__(max_matching_distance)
+        self.max_matching_distance = max_matching_distance
+        self.logger = logging.getLogger(__package__)
         self.patchsize = patchsize
         self.cv2_matching_method = cv2_matching_method
 
@@ -89,8 +69,12 @@ class TemplateMatcher(Matcher):
         return cv2.matchTemplate(fixed_patch, moving_patch, self.cv2_matching_method)[0,0]
 
 
-class TriangleMatcher(Matcher):
+class TriangleMatcher:
     """ TriangleMatcher class. """
+
+    def __init__(self,max_matching_distance):
+        self.max_matching_distance = max_matching_distance
+        self.logger = logging.getLogger(__package__)
 
     def match(self, l_fixed, l_moving, candidates=None):
         """ Perform triangle matching. """
