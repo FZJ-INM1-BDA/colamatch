@@ -1,1 +1,1 @@
-from .landmark_matcher import TemplateMatcher, TriangleMatcher
+from .landmark_matcher import TemplateMatcher, TriangleMatcher, StarMatcher
