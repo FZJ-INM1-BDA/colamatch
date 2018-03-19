@@ -1,3 +1,4 @@
+from __future__ import print_function, absolute_import, division
 import numpy as np
 import logging
 import cv2
@@ -17,6 +18,7 @@ def get_candidates(L_fixed, L_moving, max_matching_distance):
             value = 1-(np.sqrt(((np.array(k0[:2])-np.array(k1[:2]))**2).sum()) / float(max_matching_distance))
             if value >= 0:
                 possibleMatches = np.append(possibleMatches, [[i,j,value]], axis=0)
+    return possibleMatches
 
 class TemplateMatcher:
     """ TemplateMatcher class. """
