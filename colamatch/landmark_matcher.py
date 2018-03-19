@@ -108,14 +108,15 @@ class TriangleMatcher:
             sumDEF += (DEF_Coords[i][1] + DEF_Coords[i-1][1]) * (DEF_Coords[i][0] - DEF_Coords[i-1][0])
         return np.sign(sumABC) != np.sign(sumDEF)
 
-class StarMatcher(Matcher):
+class StarMatcher():
     """ StarMatcher class.
     Possible Args: num_neighbors (k), dist_tolerance, angle_tolerance
     """
 
     def __init__(self, max_matching_distance, num_neighbors, rtol_distance=0.05, atol_distance=5, rtol_angle=0.05, atol_angle=0):
         """ Initialize. """
-        super(StarMatcher, self).__init__(max_matching_distance)
+        self.max_matching_distance = max_matching_distance
+        self.logger = logging.getLogger(__package__)
         self.num_neighbors = num_neighbors
         self.rtol = {"distance": rtol_distance, "angle": rtol_angle}
         self.atol = {"distance": atol_distance, "angle": atol_angle}
