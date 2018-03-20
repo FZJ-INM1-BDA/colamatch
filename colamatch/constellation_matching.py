@@ -4,6 +4,7 @@ import math
 from sklearn.neighbors import KDTree
 from skimage.measure import ransac
 from skimage.transform import AffineTransform
+import random
 
 def _sample_landmarks(landmarks, sample_size=4):
     """ Sample n random landmarks out of given landmark list.
@@ -40,12 +41,15 @@ def _transform_coordinate_system(pointlist):
     return [0,0],b,c,d
 
 def _create_hash(pointlist, lamda=1):
-    """ Create geometric hash of given pointlist.
-    The hash code contains point coordinates (p1_x, p1_y, p2_x), the relative positions of p3 and p4 in a
-    local coordinate system with origin=p1 and (1,1)=p2 (and an optional feature descriptor).
-    The incoming point list is sorted so that p3_x <= p4_x and p3_x + p4_x <= 1 in the local coordinate
-    system. If there are several possibilities to sort the pointlist considering these constraints,
-    break and return None.
+    """ 
+    Create geometric hash of given pointlist.
+    The hash code contains point coordinates (p1_x, p1_y, p2_x), the relative
+    positions of p3 and p4 in a local coordinate system with origin=p1 and
+    (1,1)=p2 (and an optional feature descriptor). The incoming point list is
+    sorted so that p3_x <= p4_x and p3_x + p4_x <= 1 in the local coordinate
+    system. If there are several possibilities to sort the pointlist
+    considering these constraints, break and return None.
+
     Args:
         pointlist (array_like): x and y coordinates of 4 (or n) points building a quad (shape (4,2)).
         lamda (float): Weight factor for the coordinates inside the hash.
@@ -59,7 +63,7 @@ def _create_hash(pointlist, lamda=1):
     pointlist = np.array(pointlist)
     ### sort pointlist so that c_x <= d_x and c_x + d_x <= 1 in the local coordinate system
     idx_a, idx_b = _get_furthest_points(pointlist)
-    idx_c, idx_d = list(set(list(range(len(pointlist))))-set([idx_a, idx_b]))
+    idx_c, idx_d = [i for i in range(len(pointlist)) if not i in [idx_a,idx_b]]
 
     # build coordinate system with a=origin, b=k*(1,1) and vice versa
     a,b,c,d = _transform_coordinate_system(pointlist[[idx_a, idx_b, idx_c, idx_d]])
@@ -68,7 +72,7 @@ def _create_hash(pointlist, lamda=1):
     b_valid = (c2[0] + d2[0] <= a2[0])  # b is correct origin if c_x_rel + d_x_rel <= 1
 
     if a_valid == b_valid:  # break if both AB and BA are valid orders or none of them
-        return None  #TODO muss ueberhaupt abgebrochen werden wenn beide valid sind?
+        return None, []  #TODO muss ueberhaupt abgebrochen werden wenn beide valid sind?
     sorted_indices = []
     if a_valid:
         sorted_indices.extend([idx_a, idx_b])
@@ -83,27 +87,56 @@ def _create_hash(pointlist, lamda=1):
         c,d = [d,c]
 
     # build hash of normalized and scaled coordinates and relative positions of all points:
-    hashcode = (lamda*pointlist[sorted_indices[0]][0], lamda*pointlist[sorted_indices[0]][1], lamda*pointlist[sorted_indices[1]][0],
+    hashcode = (lamda*pointlist[sorted_indices[0]][0], 
+                lamda*pointlist[sorted_indices[0]][1], 
+                lamda*pointlist[sorted_indices[1]][0],
                 c[0]/b[0], c[1]/b[1], d[0]/b[0], d[1]/b[1])
 
     return hashcode, pointlist[sorted_indices]
 
-def build_index(landmarks, num_samples, sample_size=4, lamda=1):
+class RandomSampler:
+    def __init__(self, N, K, num_iterations):
+        self.counter = 0
+        self.K = K
+        self.N = N
+        self.maxiterations = num_iterations
+        print("Sampler for %i samples from %i points"%(N,K))
+    def done(self):
+        return self.counter>self.maxiterations
+    def __call__(self):
+        self.counter += 1
+        return random.sample(range(self.N), self.K)
+
+class ExhaustiveSampler:
+    # TODO make this work for K!=4
+    def __init__(self, N, K):
+        self.K = K
+        self.N = N
+        self.counter = 0
+        self.combinations = np.mgrid[0:self.N,0:self.N,0:self.N,0:self.N].reshape((self.K,-1)).T
+    def done(self):
+        return self.counter>self.combinations.shape[0]
+    def __call__(self):
+        self.counter += 1 
+        return self.combinations[self.counter%self.combinations.shape[0],:]
+
+def build_index(landmarks, sampler, lamda=1 ):
     """ Build an index of point samples with their geometric hash code as key.
     <sample_size> randomly choosen landmarks form a geometric object which is converted
     into a geometric hash. The returned dictionary contains geometric hashes for
     <num_samples> of those geometric objects.
     Args:
         landmarks (array_like): List of XY coordinates of landmarks with shape (N,2).
-        num_samples (int): Number of geometric objects to add to the index.
-        sample_size (int, optional): Number of sampled landmarks to create one geometric object.
+        sampler (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function
         lamda (int, optional): Weight factor for the coordinates inside the hash.
     Returns:
         dictionary containing geometric hashes as keys and according landmark coordinates as values.
     """
     hash2coords = {}
-    for i in range(num_samples):
-        sample_coords = _sample_landmarks(landmarks, sample_size=sample_size)
+    while not sampler.done():
+        indices = sampler()
+        sample_coords = landmarks[indices]
+        #sample_coords = _sample_landmarks(landmarks, sample_size=sample_size)
         geo_hash, sorted_coords = _create_hash(sample_coords, lamda=lamda)
         if geo_hash is None:
             continue
@@ -166,22 +199,21 @@ def _homography_ransac(matches, residual_threshold=155):
     print("mts nach RANSAC: {}".format(len(result)))
     return result
 
-def match(landmarks_fixed, landmarks_moving, num_samples, radius, sample_size=4, lamda=1, ransac=None):
+def match(landmarks_fixed, landmarks_moving, sampler, radius, lamda=1, ransac=None):
     """ Match landmarks_fixed with landmarks_moving.
     Args:
         landmarks_fixed (array_like): XY coordinates of fixed landmarks with shape (M,2).
         landmarks_moving (array_like): XY coordinates of moving landmarks with shape (N,2).
-        num_samples (int): Number of geometric objects to add to the index.
+        sampler (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function
         radius (float): Distance within which neighbors (=similar objects) are returned.
-        sample_size (int, optional): Number of sampled landmarks to create one geometric object.
         lamda (float, optional): Weight factor for the coordinates inside the hash.
         ransac(float, optional): Residual_threshold for homography ransac. If None: Skip RANSAC.
     Returns:
         np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x_fixed,y_fixed],[x_moving,y_moving]].
     """
     landmarks_fixed, landmarks_moving, scale_factor = _normalize_landmarks(landmarks_fixed, landmarks_moving)
-    index_fixed = build_index(landmarks_fixed, num_samples, sample_size, lamda)
-    index_moving = build_index(landmarks_moving, num_samples, sample_size, lamda)
+    index_fixed = build_index(landmarks_fixed, sampler, lamda)
+    index_moving = build_index(landmarks_moving, sampler, lamda)
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy or prereg)?
     matches = find_similar_hashes(index_fixed, index_moving, radius=radius)
     if ransac is not None:
