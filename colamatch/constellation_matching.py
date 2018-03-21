@@ -6,20 +6,6 @@ from skimage.measure import ransac
 from skimage.transform import AffineTransform
 import random
 
-def _sample_landmarks(landmarks, sample_size=4):
-    """ Sample n random landmarks out of given landmark list.
-    Args:
-        landmarks (array_like): List of x and y coordinates of available landmarks.
-        sample_size (int): Number of required samples.
-    Returns:
-        list: XY coordinates of SORTED sampled landmarks with shape (sample_size,2).
-    """
-    #TODO add intelligent sampling
-    import random
-    indices = range(len(landmarks))
-    indices = random.sample(indices, sample_size)
-    return landmarks[indices]
-
 def _get_furthest_points(pointlist):
     from scipy.spatial.distance import pdist, squareform
     D = pdist(pointlist)
@@ -99,7 +85,6 @@ class RandomSampler:
         self.K = K
         self.N = N
         self.maxiterations = num_iterations
-        print("Sampler for %i samples from %i points" % (N,K))
     def done(self):
         return self.counter > self.maxiterations
     def __call__(self):
