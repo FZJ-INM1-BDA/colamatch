@@ -159,14 +159,16 @@ def _normalize_landmarks(landmarks1, landmarks2):
         landmarks2 (array_like): XY coordinates of 2nd landmark set with shape (N,2).
     Returns:
         landmarks1, landmarks2, both normalized to range(0,1).
+        offset (array-like): Offset subtracted from original landmarks.
         scale_factor (int): Used scale factor.
     """
     min_x, min_y = np.min([np.min(landmarks1,0), np.min(landmarks2,0)],0)
     max_x, max_y = np.max([np.max(landmarks1,0), np.max(landmarks2,0)],0)
     scale_factor = 1 / float(max(max_x-min_x, max_y-min_y))
-    landmarks1 = (np.array(landmarks1) - np.array([min_x, min_y])) * scale_factor
-    landmarks2 = (np.array(landmarks2) - np.array([min_x, min_y])) * scale_factor
-    return landmarks1, landmarks2, scale_factor
+    offset = np.array([min_x, min_y])
+    landmarks1 = (np.array(landmarks1) - offset) * scale_factor
+    landmarks2 = (np.array(landmarks2) - offset) * scale_factor
+    return landmarks1, landmarks2, offset, scale_factor
 
 def _homography_ransac(matches, residual_threshold=155):
     print("mts vor RANSAC: {}".format(len(matches)))
@@ -196,7 +198,7 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
     Returns:
         np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x_fixed,y_fixed],[x_moving,y_moving]].
     """
-    landmarks_fixed, landmarks_moving, scale_factor = _normalize_landmarks(landmarks_fixed, landmarks_moving)
+    landmarks_fixed, landmarks_moving, offset, scale_factor = _normalize_landmarks(landmarks_fixed, landmarks_moving)
     index_fixed = build_index(landmarks_fixed, sampler_fixed, lamda)
     index_moving = build_index(landmarks_moving, sampler_moving, lamda)
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy or prereg)?
@@ -207,4 +209,4 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
     if ransac is not None:
         matches = _homography_ransac(matches, ransac)
     # return matches in original scale
-    return matches/scale_factor
+    return matches/scale_factor+offset
