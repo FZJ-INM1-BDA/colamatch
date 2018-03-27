@@ -204,24 +204,24 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
     """
     start = time.time()
     landmarks_fixed, landmarks_moving, offset, scale_factor = _normalize_landmarks(landmarks_fixed, landmarks_moving)
-    logger.debug("runtime normalization:",time.time()-start)
-    logger.debug("scale factor:",scale_factor)
+    logger.debug("runtime normalization: {}".format(time.time()-start))
+    logger.debug("scale factor: {}".format(scale_factor))
     start = time.time()
     index_fixed = build_index(landmarks_fixed, sampler_fixed, lamda)
-    logger.debug("runtime index fixed:",time.time()-start)
+    logger.debug("runtime index fixed: {}".format(time.time()-start))
     start = time.time()
     index_moving = build_index(landmarks_moving, sampler_moving, lamda)
-    logger.debug("runtime index moving:",time.time()-start)
+    logger.debug("runtime index moving: {}".format(time.time()-start))
     start = time.time()
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy or prereg)?
     matches = find_similar_hashes(index_fixed, index_moving, radius=radius)
-    logger.debug("runtime matching:",time.time()-start)
+    logger.debug("runtime matching: {}".format(time.time()-start))
     if len(matches) == 0:
         logger.info("No matches found.")
         return []
     if ransac is not None:
         start = time.time()
         matches = _homography_ransac(matches, ransac)
-        logger.debug("runtime ransac:",time.time()-start)
+        logger.debug("runtime ransac: {}".format(time.time()-start))
     # return matches in original scale
     return matches/scale_factor+offset
