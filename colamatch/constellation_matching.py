@@ -213,7 +213,7 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
     index_moving = build_index(landmarks_moving, sampler_moving, lamda)
     logger.debug("runtime index moving: {}".format(time.time()-start))
     start = time.time()
-    #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy or prereg)?
+    #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy of prereg)?
     matches = find_similar_hashes(index_fixed, index_moving, radius=radius)
     logger.debug("runtime matching: {}".format(time.time()-start))
     if len(matches) == 0:
