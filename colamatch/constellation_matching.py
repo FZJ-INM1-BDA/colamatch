@@ -5,6 +5,10 @@ from sklearn.neighbors import KDTree
 from skimage.measure import ransac
 from skimage.transform import AffineTransform
 import random
+import time
+import logging
+
+logger = logging.getLogger(__package__)
 
 def _get_furthest_points(pointlist):
     from scipy.spatial.distance import pdist, squareform
@@ -171,18 +175,18 @@ def _normalize_landmarks(landmarks1, landmarks2):
     return landmarks1, landmarks2, offset, scale_factor
 
 def _homography_ransac(matches, residual_threshold=155):
-    print("mts vor RANSAC: {}".format(len(matches)))
-    landmarks1, landmarks2 = matches[:,:,0], matches[:,:,1]
+    logger.info("mts vor RANSAC: {}".format(matches.shape))
+    landmarks1, landmarks2 = matches[:,0], matches[:,1]
     findingPosSampleProbability = 0.999
     percentageOutliers = 0.997
     numIterations = int(math.ceil(math.log(1-findingPosSampleProbability)/math.log(1-(1-percentageOutliers))))
     model_robust, inliers = ransac((landmarks1, landmarks2), AffineTransform,
                                    min_samples=3, residual_threshold=residual_threshold, max_trials=numIterations)
     if inliers is None:
-        print("Ransac found no inliers.")
+        logger.warning("Ransac found no inliers.")
         inliers = list(range(len(matches)))
     result = matches[inliers]
-    print("mts nach RANSAC: {}".format(len(result)))
+    logger.info("mts nach RANSAC: {}".format(result.shape))
     return result
 
 def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radius, lamda=1, ransac=None):
@@ -198,15 +202,26 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
     Returns:
         np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x_fixed,y_fixed],[x_moving,y_moving]].
     """
+    start = time.time()
     landmarks_fixed, landmarks_moving, offset, scale_factor = _normalize_landmarks(landmarks_fixed, landmarks_moving)
+    logger.debug("runtime normalization:",time.time()-start)
+    logger.debug("scale factor:",scale_factor)
+    start = time.time()
     index_fixed = build_index(landmarks_fixed, sampler_fixed, lamda)
+    logger.debug("runtime index fixed:",time.time()-start)
+    start = time.time()
     index_moving = build_index(landmarks_moving, sampler_moving, lamda)
+    logger.debug("runtime index moving:",time.time()-start)
+    start = time.time()
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy or prereg)?
     matches = find_similar_hashes(index_fixed, index_moving, radius=radius)
+    logger.debug("runtime matching:",time.time()-start)
     if len(matches) == 0:
-        print("No matches found.")
+        logger.info("No matches found.")
         return []
     if ransac is not None:
+        start = time.time()
         matches = _homography_ransac(matches, ransac)
+        logger.debug("runtime ransac:",time.time()-start)
     # return matches in original scale
     return matches/scale_factor+offset
