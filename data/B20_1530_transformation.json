@@ -1,0 +1,1 @@
+{"matrix": [[1.0054544852608318, 0.04920551193159284, -1.8686437221559755], [-0.04548877262266249, 0.9915384742598548, 2.1100038075345218]], "type": "affine", "moving_image": "/data/inm1/brainmap/human/B20/scans/B20_1530_TS02_Pyramid.tif", "coordinate_space": "mm", "fixed_image": "/data/inm1/brainmap/human/B20/scans/B20_1529_TS02_Pyramid.tif"}
