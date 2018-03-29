@@ -174,7 +174,7 @@ def _normalize_landmarks(landmarks1, landmarks2):
     landmarks2 = (np.array(landmarks2) - offset) * scale_factor
     return landmarks1, landmarks2, offset, scale_factor
 
-def _homography_ransac(matches, residual_threshold=155):
+def _homography_ransac(matches, residual_threshold=0.01):
     logger.info("mts vor RANSAC: {}".format(matches.shape))
     landmarks1, landmarks2 = matches[:,0], matches[:,1]
     findingPosSampleProbability = 0.999
