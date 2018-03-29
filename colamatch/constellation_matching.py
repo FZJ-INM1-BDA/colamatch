@@ -124,7 +124,6 @@ def build_index(landmarks, sampler, lamda=1):
     while not sampler.done():
         indices = sampler()
         sample_coords = landmarks[indices]
-        #sample_coords = _sample_landmarks(landmarks, sample_size=sample_size)
         geo_hash, sorted_coords = _create_hash(sample_coords, lamda=lamda)
         if geo_hash is None:
             continue
