@@ -1,7 +1,7 @@
 # colamatch
 
 ## Dependencies
-* numpy
+* numpy >= v1.13
 * scikit-learn
 * scikit-image
 
