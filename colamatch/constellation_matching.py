@@ -6,6 +6,7 @@ from skimage.measure import ransac
 from skimage.transform import AffineTransform
 import random
 import time
+import itertools
 import logging
 
 logger = logging.getLogger(__package__)
@@ -100,12 +101,12 @@ class ExhaustiveSampler:
         self.K = K
         self.N = N
         self.counter = 0
-        self.combinations = np.mgrid[[slice(0,self.N,1)]*self.K].reshape((self.K,-1)).T
+        self.combinations = np.array(list(itertools.combinations(range(self.N), self.K)))
     def done(self):
         return self.counter > self.combinations.shape[0]
     def __call__(self):
         self.counter += 1
-        return self.combinations[self.counter % self.combinations.shape[0],:]
+        return np.array(self.combinations[self.counter % self.combinations.shape[0],:])
 
 def build_index(landmarks, sampler, lamda=1):
     """ Build an index of point samples with their geometric hash code as key.
