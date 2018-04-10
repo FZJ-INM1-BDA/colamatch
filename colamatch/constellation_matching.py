@@ -96,12 +96,11 @@ class RandomSampler:
         return random.sample(range(self.N), self.K)
 
 class ExhaustiveSampler:
-    # TODO make this work for K!=4
     def __init__(self, N, K):
         self.K = K
         self.N = N
         self.counter = 0
-        self.combinations = np.mgrid[0:self.N,0:self.N,0:self.N,0:self.N].reshape((self.K,-1)).T
+        self.combinations = np.mgrid[[slice(0,self.N,1)]*self.K].reshape((self.K,-1)).T
     def done(self):
         return self.counter > self.combinations.shape[0]
     def __call__(self):
