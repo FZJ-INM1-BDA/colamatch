@@ -188,7 +188,7 @@ def _homography_ransac(matches, residual_threshold=0.01):
     logger.info("Number of matches after RANSAC: {}".format(len(result)))
     return result
 
-def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=1, ransac=None):
+def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=1, ransac_threshold=None):
     """ Match points in pointlist1 with points in pointlist2.
     Args:
         pointlist1 (array_like): XY coordinates of points in 1st image with shape (M,2).
@@ -197,7 +197,7 @@ def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=
         sampler2 (object): Sampler object for points in 2nd image that provides a __call__ function for querying 4 indices, and a done() function.
         radius (float): Distance within which neighbors (=similar objects) are returned.
         coordinate_weight (float, optional): Relative weight of the absolute coorindates. If zero, the absolute location of points is not taken into account for matching.
-        ransac(float, optional): Residual_threshold for homography ransac. If None: Skip RANSAC.
+        ransac_threshold(float, optional): Residual_threshold for homography ransac. If None: Skip RANSAC.
     Returns:
         np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x1,y1],[x2,y2]].
     """
@@ -218,9 +218,9 @@ def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=
     if len(matches) == 0:
         logger.info("No matches found.")
         return []
-    if ransac is not None:
+    if ransac_threshold is not None:
         start = time.time()
-        matches = _homography_ransac(matches, ransac)
+        matches = _homography_ransac(matches, ransac_threshold)
         logger.debug("runtime ransac: {}".format(time.time()-start))
     # return matches in original scale
     return matches/scale_factor+offset
