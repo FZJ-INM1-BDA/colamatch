@@ -31,7 +31,7 @@ def _transform_coordinate_system(pointlist):
     b,c,d = [rot_matrix.dot(v) for v in [b,c,d]]  # rotate b, c and d
     return [0,0],b,c,d
 
-def _create_hash(pointlist, lamda=1):
+def _create_hash(pointlist, coordinate_weight=1):
     """ Create geometric hash of given pointlist.
     The hash code contains point coordinates (p1_x, p1_y, p2_x), the relative
     positions of p3 and p4 in a local coordinate system with origin=p1 and
@@ -42,7 +42,7 @@ def _create_hash(pointlist, lamda=1):
 
     Args:
         pointlist (array_like): x and y coordinates of 4 (or n) points building a quad (shape (4,2)).
-        lamda (float): Weight factor for the coordinates inside the hash.
+        coordinate_weight (float): Weight factor for the coordinates inside the hash.
     Returns:
         tuple: Hash of quad built from given pointlist.
         list: Sorted pointlist.
@@ -77,9 +77,9 @@ def _create_hash(pointlist, lamda=1):
         c,d = [d,c]
 
     # build hash of normalized and scaled coordinates and relative positions of all points:
-    hashcode = (lamda*pointlist[sorted_indices[0]][0],
-                lamda*pointlist[sorted_indices[0]][1],
-                lamda*pointlist[sorted_indices[1]][0],
+    hashcode = (coordinate_weight*pointlist[sorted_indices[0]][0],
+                coordinate_weight*pointlist[sorted_indices[0]][1],
+                coordinate_weight*pointlist[sorted_indices[1]][0],
                 c[0]/b[0], c[1]/b[1], d[0]/b[0], d[1]/b[1])
 
     return hashcode, pointlist[sorted_indices]
@@ -108,7 +108,7 @@ class ExhaustiveSampler:
         self.counter += 1
         return np.array(self.combinations[self.counter % self.combinations.shape[0],:])
 
-def build_index(landmarks, sampler, lamda=1):
+def build_index(landmarks, sampler, coordinate_weight=1):
     """ Build an index of point samples with their geometric hash code as key.
     <sample_size> randomly choosen landmarks form a geometric object which is converted
     into a geometric hash. The returned dictionary contains geometric hashes for
@@ -116,7 +116,7 @@ def build_index(landmarks, sampler, lamda=1):
     Args:
         landmarks (array_like): List of XY coordinates of landmarks with shape (N,2).
         sampler (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function
-        lamda (int, optional): Weight factor for the coordinates inside the hash.
+        coordinate_weight (int, optional): Weight factor for the coordinates inside the hash.
     Returns:
         dictionary containing geometric hashes as keys and according landmark coordinates as values.
     """
@@ -124,7 +124,7 @@ def build_index(landmarks, sampler, lamda=1):
     while not sampler.done():
         indices = sampler()
         sample_coords = landmarks[indices]
-        geo_hash, sorted_coords = _create_hash(sample_coords, lamda=lamda)
+        geo_hash, sorted_coords = _create_hash(sample_coords, coordinate_weight=cdef find_similar_hashes(index_fixed, index_moving, radius):oordinate_weight)
         if geo_hash is None:
             continue
         hash2coords[geo_hash] = sorted_coords
@@ -188,7 +188,7 @@ def _homography_ransac(matches, residual_threshold=0.01):
     logger.info("mts nach RANSAC: {}".format(result.shape))
     return result
 
-def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radius, lamda=1, ransac=None):
+def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radius, coordinate_weight=1, ransac=None):
     """ Match landmarks_fixed with landmarks_moving.
     Args:
         landmarks_fixed (array_like): XY coordinates of fixed landmarks with shape (M,2).
@@ -196,7 +196,7 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
         sampler_fixed (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function.
         sampler_moving (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function.
         radius (float): Distance within which neighbors (=similar objects) are returned.
-        lamda (float, optional): Weight factor for the coordinates inside the hash.
+        coordinate_weight (float, optional): Relative weight of the absolute coorindates. If zero, the absolute location of points is not taken into account for matching.
         ransac(float, optional): Residual_threshold for homography ransac. If None: Skip RANSAC.
     Returns:
         np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x_fixed,y_fixed],[x_moving,y_moving]].
@@ -206,10 +206,10 @@ def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radi
     logger.debug("runtime normalization: {}".format(time.time()-start))
     logger.debug("scale factor: {}".format(scale_factor))
     start = time.time()
-    index_fixed = build_index(landmarks_fixed, sampler_fixed, lamda)
+    index_fixed = build_index(landmarks_fixed, sampler_fixed, coordinate_weight)
     logger.debug("runtime index fixed: {}".format(time.time()-start))
     start = time.time()
-    index_moving = build_index(landmarks_moving, sampler_moving, lamda)
+    index_moving = build_index(landmarks_moving, sampler_moving, coordinate_weight)
     logger.debug("runtime index moving: {}".format(time.time()-start))
     start = time.time()
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy of prereg)?
