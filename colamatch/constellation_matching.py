@@ -35,7 +35,7 @@ def _create_hash(pointlist, coordinate_weight=1):
     """ Create geometric hash of given pointlist.
     The hash code contains point coordinates (p1_x, p1_y, p2_x), the relative
     positions of p3 and p4 in a local coordinate system with origin=p1 and
-    (1,1)=p2 (and an optional feature descriptor). The incoming point list is
+    (1,1)=p2 (and an optional feature descriptor). The incoming pointlist is
     sorted so that p3_x <= p4_x and p3_x + p4_x <= 1 in the local coordinate
     system. If there are several possibilities to sort the pointlist
     considering these constraints, break and return None.
@@ -108,112 +108,112 @@ class ExhaustiveSampler:
         self.counter += 1
         return np.array(self.combinations[self.counter % self.combinations.shape[0],:])
 
-def build_index(landmarks, sampler, coordinate_weight=1):
-    """ Build an index of point samples with their geometric hash code as key.
-    <sample_size> randomly choosen landmarks form a geometric object which is converted
+def build_index(pointlist, sampler, coordinate_weight=1):
+    """ Build an index of pointlist samples with their geometric hash code as key.
+    <sample_size> randomly choosen points form a geometric object which is converted
     into a geometric hash. The returned dictionary contains geometric hashes for
     <num_samples> of those geometric objects.
     Args:
-        landmarks (array_like): List of XY coordinates of landmarks with shape (N,2).
+        pointlist (array_like): List of XY coordinates of points with shape (N,2).
         sampler (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function
         coordinate_weight (int, optional): Weight factor for the coordinates inside the hash.
     Returns:
-        dictionary containing geometric hashes as keys and according landmark coordinates as values.
+        dictionary containing geometric hashes as keys and according point coordinates as values.
     """
     hash2coords = {}
     while not sampler.done():
         indices = sampler()
-        sample_coords = landmarks[indices]
+        sample_coords = pointlist[indices]
         geo_hash, sorted_coords = _create_hash(sample_coords, coordinate_weight=coordinate_weight)
         if geo_hash is None:
             continue
         hash2coords[geo_hash] = sorted_coords
     return hash2coords
 
-def find_similar_hashes(index_fixed, index_moving, radius):
-    """ Find similar hashes in index_fixed and index_moving using a KDTree.
+def find_similar_hashes(index1, index2, radius):
+    """ Find similar hashes in index1 and index2 using a KDTree.
     Args:
-        index_fixed (dictionary): Index with geometric hashes as keys and according fixed landmark coordinates as values.
-        index_moving (dictionary): Index with geometric hashes as keys and according moving landmark coordinates as values.
+        index1 (dictionary): Index for 1st image with geometric hashes as keys and according point coordinates as values.
+        index2 (dictionary): Index for 2nd image with geometric hashes as keys and according point coordinates as values.
         radius (float): Distance within which neighbors are returned.
     Returns:
-        np.array: Matched XY coordinates of shape (M,2,2) with one match = [[x_fixed,y_fixed],[x_moving,y_moving]].
+        np.array: Matched XY coordinates of shape (M,2,2) with one match = [[x1,y1],[x2,y2]].
     """
-    kdtree = KDTree(list(index_fixed.keys()), leaf_size=2, metric='minkowski')
+    kdtree = KDTree(list(index1.keys()), leaf_size=2, metric='minkowski')
     matches = []
-    for hashcode, moving_coords in index_moving.items():
+    for hashcode, coordinates in index2.items():
         neighbor_indices = kdtree.query_radius([hashcode], radius)[0]
         if len(neighbor_indices) > 0:
-            neighbor_hashes = np.array(list(index_fixed.keys()))[neighbor_indices]
-            neighbor_coords = [index_fixed[tuple(nh)] for nh in neighbor_hashes]
+            neighbor_hashes = np.array(list(index1.keys()))[neighbor_indices]
+            neighbor_coords = [index1[tuple(nh)] for nh in neighbor_hashes]
             for nc in neighbor_coords:
-                matches.extend([[ni,si] for (ni,si) in zip(nc, moving_coords)])
+                matches.extend([[ni,si] for (ni,si) in zip(nc, coordinates)])
     # get only unique matches
     if len(matches) > 0:
         matches = np.unique(np.array(matches), axis=0)
     return np.array(matches)
 
-def _normalize_landmarks(landmarks1, landmarks2):
-    """ Normalize given sets of landmarks to range (0,1).
+def _normalize_pointlists(pointlist1, pointlist2):
+    """ Normalize coordinates of given pointlists to range (0,1).
     Normalize by subtracting mininmal x and y values and scaling with maximal
     range of coordinates in x or y direction.
     Args:
-        landmarks1 (array_like): XY coordinates of 1st landmark set with shape (M,2).
-        landmarks2 (array_like): XY coordinates of 2nd landmark set with shape (N,2).
+        pointlist1 (array_like): XY coordinates of points in 1st image with shape (M,2).
+        pointlist2 (array_like): XY coordinates of points in 2nd image with shape (N,2).
     Returns:
-        landmarks1, landmarks2, both normalized to range(0,1).
-        offset (array-like): Offset subtracted from original landmarks.
+        pointlist1, pointlist2: both normalized to range(0,1).
+        offset (array-like): Offset subtracted from original coorindates.
         scale_factor (int): Used scale factor.
     """
-    min_x, min_y = np.min([np.min(landmarks1,0), np.min(landmarks2,0)],0)
-    max_x, max_y = np.max([np.max(landmarks1,0), np.max(landmarks2,0)],0)
+    min_x, min_y = np.min([np.min(pointlist1,0), np.min(pointlist2,0)],0)
+    max_x, max_y = np.max([np.max(pointlist1,0), np.max(pointlist2,0)],0)
     scale_factor = 1 / float(max(max_x-min_x, max_y-min_y))
     offset = np.array([min_x, min_y])
-    landmarks1 = (np.array(landmarks1) - offset) * scale_factor
-    landmarks2 = (np.array(landmarks2) - offset) * scale_factor
-    return landmarks1, landmarks2, offset, scale_factor
+    pointlist1 = (np.array(pointlist1) - offset) * scale_factor
+    pointlist2 = (np.array(pointlist2) - offset) * scale_factor
+    return pointlist1, pointlist2, offset, scale_factor
 
 def _homography_ransac(matches, residual_threshold=0.01):
-    logger.info("mts vor RANSAC: {}".format(matches.shape))
-    landmarks1, landmarks2 = matches[:,0], matches[:,1]
+    logger.info("Number of matches before RANSAC: {}".format(len(matches)))
+    pointlist1, pointlist2 = matches[:,0], matches[:,1]
     findingPosSampleProbability = 0.999
     percentageOutliers = 0.997
     numIterations = int(math.ceil(math.log(1-findingPosSampleProbability)/math.log(1-(1-percentageOutliers))))
-    model_robust, inliers = ransac((landmarks1, landmarks2), AffineTransform,
+    model_robust, inliers = ransac((pointlist1, pointlist2), AffineTransform,
                                    min_samples=3, residual_threshold=residual_threshold, max_trials=numIterations)
     if inliers is None:
         logger.warning("Ransac found no inliers.")
         inliers = list(range(len(matches)))
     result = matches[inliers]
-    logger.info("mts nach RANSAC: {}".format(result.shape))
+    logger.info("Number of matches after RANSAC: {}".format(len(result)))
     return result
 
-def match(landmarks_fixed, landmarks_moving, sampler_fixed, sampler_moving, radius, coordinate_weight=1, ransac=None):
-    """ Match landmarks_fixed with landmarks_moving.
+def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=1, ransac=None):
+    """ Match points in pointlist1 with points in pointlist2.
     Args:
-        landmarks_fixed (array_like): XY coordinates of fixed landmarks with shape (M,2).
-        landmarks_moving (array_like): XY coordinates of moving landmarks with shape (N,2).
-        sampler_fixed (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function.
-        sampler_moving (object): Sampler object that provides a __call__ function for querying 4 indices, and a done() function.
+        pointlist1 (array_like): XY coordinates of points in 1st image with shape (M,2).
+        pointlist2 (array_like): XY coordinates of points in 2nd image with shape (N,2).
+        sampler1 (object): Sampler object for points in 1st image that provides a __call__ function for querying 4 indices, and a done() function.
+        sampler2 (object): Sampler object for points in 2nd image that provides a __call__ function for querying 4 indices, and a done() function.
         radius (float): Distance within which neighbors (=similar objects) are returned.
         coordinate_weight (float, optional): Relative weight of the absolute coorindates. If zero, the absolute location of points is not taken into account for matching.
         ransac(float, optional): Residual_threshold for homography ransac. If None: Skip RANSAC.
     Returns:
-        np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x_fixed,y_fixed],[x_moving,y_moving]].
+        np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x1,y1],[x2,y2]].
     """
     start = time.time()
-    landmarks_fixed, landmarks_moving, offset, scale_factor = _normalize_landmarks(landmarks_fixed, landmarks_moving)
+    pointlist1, pointlist2, offset, scale_factor = _normalize_pointlists(pointlist1, pointlist2)
     logger.debug("runtime normalization: {}".format(time.time()-start))
     logger.debug("scale factor: {}".format(scale_factor))
     start = time.time()
-    index_fixed = build_index(landmarks_fixed, sampler_fixed, coordinate_weight)
-    logger.debug("runtime index fixed: {}".format(time.time()-start))
+    index1 = build_index(pointlist1, sampler1, coordinate_weight)
+    logger.debug("runtime for building 1st index: {}".format(time.time()-start))
     start = time.time()
-    index_moving = build_index(landmarks_moving, sampler_moving, coordinate_weight)
-    logger.debug("runtime index moving: {}".format(time.time()-start))
+    index2 = build_index(pointlist2, sampler2, coordinate_weight)
+    logger.debug("runtime for building 2nd index: {}".format(time.time()-start))
     start = time.time()
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy of prereg)?
-    matches = find_similar_hashes(index_fixed, index_moving, radius=radius)
+    matches = find_similar_hashes(index1, index2, radius=radius)
     logger.debug("runtime matching: {}".format(time.time()-start))
     if len(matches) == 0:
         logger.info("No matches found.")
