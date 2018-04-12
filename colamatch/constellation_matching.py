@@ -124,7 +124,7 @@ def build_index(landmarks, sampler, coordinate_weight=1):
     while not sampler.done():
         indices = sampler()
         sample_coords = landmarks[indices]
-        geo_hash, sorted_coords = _create_hash(sample_coords, coordinate_weight=cdef find_similar_hashes(index_fixed, index_moving, radius):oordinate_weight)
+        geo_hash, sorted_coords = _create_hash(sample_coords, coordinate_weight=coordinate_weight)
         if geo_hash is None:
             continue
         hash2coords[geo_hash] = sorted_coords
