@@ -77,12 +77,13 @@ def _create_hash(pointlist, coordinate_weight=1):
         c,d = [d,c]
 
     # build hash of normalized and scaled coordinates and relative positions of all points:
-    hashcode = (coordinate_weight*pointlist[sorted_indices[0]][0],
-                coordinate_weight*pointlist[sorted_indices[0]][1],
-                coordinate_weight*pointlist[sorted_indices[1]][0],
-                c[0]/b[0], c[1]/b[1], d[0]/b[0], d[1]/b[1])
+    hashcode = np.array([coordinate_weight*pointlist[sorted_indices[0]][0],
+                         coordinate_weight*pointlist[sorted_indices[0]][1],
+                         coordinate_weight*pointlist[sorted_indices[1]][0],
+                         c[0]/b[0], c[1]/b[1], d[0]/b[0], d[1]/b[1]])
+    normalization_factor = np.sqrt(np.sum(np.array([coordinate_weight,coordinate_weight,coordinate_weight,1,1,1,1])**2))
 
-    return hashcode, pointlist[sorted_indices]
+    return tuple(hashcode/normalization_factor), pointlist[sorted_indices]
 
 class RandomSampler:
     def __init__(self, N, K, num_iterations):
@@ -130,26 +131,46 @@ def build_index(pointlist, sampler, coordinate_weight=1):
         hash2coords[geo_hash] = sorted_coords
     return hash2coords
 
-def find_similar_hashes(index1, index2, radius):
+def find_similar_hashes(index1, index2, dissimilarity):
     """ Find similar hashes in index1 and index2 using a KDTree.
     Args:
         index1 (dictionary): Index for 1st image with geometric hashes as keys and according point coordinates as values.
         index2 (dictionary): Index for 2nd image with geometric hashes as keys and according point coordinates as values.
-        radius (float): Distance within which neighbors are returned.
+        dissimilarity (float): Maximum dissimilarity between two matched constellations. Constellations with larger
+                dissimilarity will never be matched. Valid values are between 0 and 1.
     Returns:
         np.array: Matched XY coordinates of shape (M,2,2) with one match = [[x1,y1],[x2,y2]].
     """
     kdtree = KDTree(list(index1.keys()), leaf_size=2, metric='minkowski')
     matches = []
+    debug = logger.isEnabledFor(logging.DEBUG)
+    if debug:
+        all_dists = []
+        num_neighbors = []
     for hashcode, coordinates in index2.items():
-        neighbor_indices = kdtree.query_radius([hashcode], radius)[0]
-        if len(neighbor_indices) > 0:
-            neighbor_hashes = np.array(list(index1.keys()))[neighbor_indices]
+        #dists, neighbor_indices = kdtree.query([hashcode], dissimilarity, return_distance=True)
+        if debug:
+            neighbor_indices, dists = kdtree.query_radius([hashcode], dissimilarity, return_distance=True)
+        else:
+            neighbor_indices = kdtree.query_radius([hashcode], dissimilarity, return_distance=False)
+        if len(neighbor_indices[0]) > 0:
+            neighbor_hashes = np.array(list(index1.keys()))[neighbor_indices[0]]
             neighbor_coords = [index1[tuple(nh)] for nh in neighbor_hashes]
             for nc in neighbor_coords:
                 matches.extend([[ni,si] for (ni,si) in zip(nc, coordinates)])
+        if debug:
+            all_dists.extend(dists[0])
+            num_neighbors.append(len(neighbor_indices[0]))
     # get only unique matches
     if len(matches) > 0:
+        if debug:
+            logger.debug("Mean distance of found neighbors: {}".format(np.mean(np.array(all_dists))))
+            logger.debug("Min distance of found neighbors: {}".format(np.min(np.array(all_dists))))
+            logger.debug("Max distance of found neighbors: {}".format(np.max(np.array(all_dists))))
+            logger.debug("Mean number of found neighbors per KDTree query: {}".format(np.mean(np.array(num_neighbors))))
+            logger.debug("Total number of found neighbors: {}".format(np.sum(np.array(num_neighbors))))
+            logger.debug("Total number of KDTree queries: {}".format(len(index2.keys())))
+            logger.debug("Max number of found neighbors in ONE query: {}".format(np.max(np.array(num_neighbors))))
         matches = np.unique(np.array(matches), axis=0)
     return np.array(matches)
 
@@ -162,7 +183,7 @@ def _normalize_pointlists(pointlist1, pointlist2):
         pointlist2 (array_like): XY coordinates of points in 2nd image with shape (N,2).
     Returns:
         pointlist1, pointlist2: both normalized to range(0,1).
-        offset (array-like): Offset subtracted from original coorindates.
+        offset (array-like): Offset subtracted from original coordinates.
         scale_factor (int): Used scale factor.
     """
     min_x, min_y = np.min([np.min(pointlist1,0), np.min(pointlist2,0)],0)
@@ -188,15 +209,20 @@ def _homography_ransac(matches, residual_threshold=0.01):
     logger.info("Number of matches after RANSAC: {}".format(len(result)))
     return result
 
-def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=1, ransac_threshold=None):
+def match(pointlist1, pointlist2, sampler1, sampler2, dissimilarity, coordinate_weight=1, ransac_threshold=None):
     """ Match points in pointlist1 with points in pointlist2.
     Args:
         pointlist1 (array_like): XY coordinates of points in 1st image with shape (M,2).
         pointlist2 (array_like): XY coordinates of points in 2nd image with shape (N,2).
-        sampler1 (object): Sampler object for points in 1st image that provides a __call__ function for querying 4 indices, and a done() function.
-        sampler2 (object): Sampler object for points in 2nd image that provides a __call__ function for querying 4 indices, and a done() function.
-        radius (float): Distance within which neighbors (=similar objects) are returned.
-        coordinate_weight (float, optional): Relative weight of the absolute coorindates. If zero, the absolute location of points is not taken into account for matching.
+        sampler1 (object): Sampler object for points in 1st image that provides a __call__
+                function for querying 4 indices, and a done() function.
+        sampler2 (object): Sampler object for points in 2nd image that provides a __call__
+                function for querying 4 indices, and a done() function.
+        dissimilarity (float): Maximum dissimilarity between two matched constellations.
+                Constellations with larger dissimilarity will never be matched. Valid values
+                are between 0 and 1, higher values result in more match candidates.
+        coordinate_weight (float, optional): Relative weight of the absolute coordinates. If zero,
+                the absolute location of points is not taken into account for matching.
         ransac_threshold(float, optional): Residual_threshold for homography ransac. If None: Skip RANSAC.
     Returns:
         np.array: Matched XY coordinates of shape (K,2,2) with one match = [[x1,y1],[x2,y2]].
@@ -213,7 +239,7 @@ def match(pointlist1, pointlist2, sampler1, sampler2, radius, coordinate_weight=
     logger.debug("runtime for building 2nd index: {}".format(time.time()-start))
     start = time.time()
     #TODO calculate proper radius (with regard to used scale_factor and assumed accuracy of prereg)?
-    matches = find_similar_hashes(index1, index2, radius=radius)
+    matches = find_similar_hashes(index1, index2, dissimilarity=dissimilarity)
     logger.debug("runtime matching: {}".format(time.time()-start))
     if len(matches) == 0:
         logger.info("No matches found.")
